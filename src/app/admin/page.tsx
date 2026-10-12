@@ -19,7 +19,7 @@ import {
   Search, 
   MapPin, 
   ExternalLink, 
-  Printer, 
+  AlertCircle, 
   Download, 
   Check, 
   X, 
@@ -43,6 +43,7 @@ export default function AdminDashboardPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPlace, setEditingPlace] = useState<CampusPlace | null>(null);
   const [showQRStudio, setShowQRStudio] = useState(false);
+  const [statusModal, setStatusModal] = useState<{ isOpen: boolean; message: string; type?: 'success' | 'error' } | null>(null);
 
   // Form fields
   const [formData, setFormData] = useState({
@@ -139,7 +140,11 @@ export default function AdminDashboardPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim() || !formData.latitude || !formData.longitude || !formData.shortDescription.trim()) {
-      alert('Please fill out Name, Latitude, Longitude, and Description.');
+      setStatusModal({
+        isOpen: true,
+        message: 'Please fill out all required fields.',
+        type: 'error'
+      });
       return;
     }
 
@@ -175,11 +180,19 @@ export default function AdminDashboardPage() {
       }
 
       await loadData();
-      alert(editingPlace ? '✅ Landmark updated successfully in Supabase database!' : '✅ Landmark added successfully to Supabase database!');
+      setStatusModal({
+        isOpen: true,
+        message: 'updated successfully',
+        type: 'success'
+      });
     } catch (err: unknown) {
       console.error(err);
       const msg = err instanceof Error ? err.message : 'Operation failed';
-      alert('❌ Database update error: ' + msg);
+      setStatusModal({
+        isOpen: true,
+        message: msg,
+        type: 'error'
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -190,11 +203,19 @@ export default function AdminDashboardPage() {
       try {
         await deleteCampusPlace(id);
         await loadData();
-        alert('✅ Landmark deleted from Supabase database.');
+        setStatusModal({
+          isOpen: true,
+          message: 'deleted successfully',
+          type: 'success'
+        });
       } catch (err: unknown) {
         console.error(err);
         const msg = err instanceof Error ? err.message : 'Failed to delete';
-        alert('❌ Delete error: ' + msg);
+        setStatusModal({
+          isOpen: true,
+          message: msg,
+          type: 'error'
+        });
       }
     }
   };
@@ -861,7 +882,7 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
               <a
                 href="/srm-campus-qr.png"
                 download="srm-campus-qr.png"
@@ -869,18 +890,65 @@ export default function AdminDashboardPage() {
                 style={{ textDecoration: 'none', fontSize: '0.86rem' }}
               >
                 <Download size={15} />
-                <span>Download QR PNG</span>
+                <span>Download Poster</span>
               </a>
-
-              <button
-                onClick={() => window.print()}
-                className="btn-secondary"
-                style={{ fontSize: '0.86rem' }}
-              >
-                <Printer size={15} />
-                <span>Print Poster</span>
-              </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Status Modal */}
+      {statusModal?.isOpen && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => setStatusModal(null)}
+          style={{ zIndex: 10000 }}
+        >
+          <div 
+            className="modal-content" 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '360px',
+              padding: '2rem 1.5rem',
+              textAlign: 'center',
+              borderRadius: 'var(--radius-lg)'
+            }}
+          >
+            <div style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '50%',
+              backgroundColor: statusModal.type === 'error' ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+              border: `1px solid ${statusModal.type === 'error' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(16, 185, 129, 0.25)'}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1.25rem',
+              color: statusModal.type === 'error' ? '#ef4444' : '#10b981'
+            }}>
+              {statusModal.type === 'error' ? <AlertCircle size={26} /> : <Check size={26} />}
+            </div>
+
+            <h3 style={{
+              fontSize: '1.2rem',
+              fontWeight: 700,
+              color: 'var(--text-primary)',
+              marginBottom: '1.25rem'
+            }}>
+              {statusModal.message}
+            </h3>
+
+            <button
+              onClick={() => setStatusModal(null)}
+              className="btn-primary-navy"
+              style={{
+                width: '100%',
+                padding: '0.65rem 1rem',
+                fontSize: '0.88rem'
+              }}
+            >
+              OK
+            </button>
           </div>
         </div>
       )}

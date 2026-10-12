@@ -11,8 +11,7 @@ import {
   Navigation2, 
   Eye, 
   EyeOff, 
-  AlertCircle,
-  Database
+  AlertCircle
 } from 'lucide-react';
 import { verifyAdminCredentials, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -182,18 +181,15 @@ export default function AdminLoginPage() {
 
           {/* Password */}
           <div style={{ marginBottom: '1.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-              <label style={{
-                fontSize: '0.82rem',
-                fontWeight: 600,
-                color: 'var(--text-primary)'
-              }}>
-                Password
-              </label>
-              <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-                Default: <code>srm123</code>
-              </span>
-            </div>
+            <label style={{
+              display: 'block',
+              marginBottom: '0.4rem',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              color: 'var(--text-primary)'
+            }}>
+              Password
+            </label>
             <div style={{ position: 'relative' }}>
               <Lock 
                 size={16} 
@@ -249,29 +245,10 @@ export default function AdminLoginPage() {
               marginBottom: '1.25rem'
             }}
           >
-            <span>{isAuthenticating ? 'Verifying with Database...' : 'Sign In to Admin Portal'}</span>
+            <span>{isAuthenticating ? 'Signing in...' : 'Sign In to Admin Portal'}</span>
             <ArrowRight size={16} />
           </button>
         </form>
-
-        {/* Database Verification Note */}
-        <div style={{
-          backgroundColor: 'var(--bg-subtle)',
-          borderRadius: 'var(--radius-sm)',
-          border: '1px solid var(--border-subtle)',
-          padding: '0.75rem 0.9rem',
-          fontSize: '0.78rem',
-          color: 'var(--text-muted)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          marginBottom: '1.25rem'
-        }}>
-          <Database size={14} color="var(--srm-gold)" style={{ flexShrink: 0 }} />
-          <div>
-            Verified against the <strong>admin_users</strong> table in Supabase.
-          </div>
-        </div>
 
         {/* Back to Home link */}
         <div style={{
