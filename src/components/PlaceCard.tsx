@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { CampusPlace, CATEGORY_INFO, getGoogleMapsWalkingUrl } from '@/data/campusPlaces';
 import { 
   Navigation2, 
@@ -106,53 +106,47 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({ place }) => {
             fontSize: '0.78rem',
             fontWeight: 600,
             color: 'var(--srm-gold)',
-            marginBottom: '0.65rem'
+            marginBottom: '0.85rem'
           }}>
             <Building2 size={13} />
             <span>{place.floorOrBuilding}</span>
           </div>
         )}
 
-        {/* Short Description */}
-        <p style={{
-          fontSize: '0.86rem',
-          color: 'var(--text-secondary)',
-          lineHeight: 1.5,
-          marginBottom: '1rem',
-          display: '-webkit-box',
-          WebkitLineClamp: 3,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden'
-        }}>
-          {place.shortDescription}
-        </p>
-
         {/* Highlights / Tags */}
-        {((place.popularItems && place.popularItems.length > 0) || (place.tags && place.tags.length > 0)) && (
-          <div style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '0.35rem',
-            marginBottom: '1.25rem'
-          }}>
-            {(place.popularItems || place.tags).slice(0, 3).map((item, idx) => (
-              <span
-                key={idx}
-                style={{
-                  fontSize: '0.72rem',
-                  fontWeight: 500,
-                  padding: '0.15rem 0.5rem',
-                  borderRadius: 'var(--radius-xs)',
-                  background: 'var(--bg-subtle)',
-                  color: 'var(--text-muted)',
-                  border: '1px solid var(--border-subtle)'
-                }}
-              >
-                {item}
-              </span>
-            ))}
-          </div>
-        )}
+        {(() => {
+          const displayTags = Array.from(new Set([...(place.tags || []), ...(place.popularItems || [])]))
+            .map(t => t.trim())
+            .filter(Boolean);
+
+          if (displayTags.length === 0) return null;
+
+          return (
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.35rem',
+              marginBottom: '1.25rem'
+            }}>
+              {displayTags.map((item, idx) => (
+                <span
+                  key={idx}
+                  style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 500,
+                    padding: '0.15rem 0.5rem',
+                    borderRadius: 'var(--radius-xs)',
+                    background: 'var(--bg-subtle)',
+                    color: 'var(--text-muted)',
+                    border: '1px solid var(--border-subtle)'
+                  }}
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Action Footer */}

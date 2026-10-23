@@ -97,9 +97,9 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { name, category, latitude, longitude, shortDescription, floorOrBuilding, tags, popularItems, iconName } = body;
 
-    if (!name || latitude === undefined || longitude === undefined || !shortDescription) {
+    if (!name || latitude === undefined || longitude === undefined) {
       return NextResponse.json(
-        { success: false, error: 'Name, latitude, longitude, and shortDescription are required.' },
+        { success: false, error: 'Name, latitude, and longitude are required.' },
         { status: 400 }
       );
     }
@@ -120,7 +120,7 @@ export async function POST(request: Request) {
       category: category || 'amenity',
       latitude: Number(latitude),
       longitude: Number(longitude),
-      short_description: shortDescription.trim(),
+      short_description: shortDescription ? shortDescription.trim() : '',
       floor_or_building: floorOrBuilding?.trim() || null,
       tags: Array.isArray(tags) ? tags : [],
       popular_items: Array.isArray(popularItems) ? popularItems : [],
@@ -180,7 +180,7 @@ export async function PUT(request: Request) {
     if (updates.category !== undefined) dbUpdates.category = updates.category;
     if (updates.latitude !== undefined) dbUpdates.latitude = Number(updates.latitude);
     if (updates.longitude !== undefined) dbUpdates.longitude = Number(updates.longitude);
-    if (updates.shortDescription !== undefined) dbUpdates.short_description = updates.shortDescription.trim();
+    if (updates.shortDescription !== undefined) dbUpdates.short_description = updates.shortDescription ? updates.shortDescription.trim() : '';
     if (updates.floorOrBuilding !== undefined) dbUpdates.floor_or_building = updates.floorOrBuilding?.trim() || null;
     if (updates.tags !== undefined) dbUpdates.tags = Array.isArray(updates.tags) ? updates.tags : [];
     if (updates.popularItems !== undefined) dbUpdates.popular_items = Array.isArray(updates.popularItems) ? updates.popularItems : [];

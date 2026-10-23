@@ -6,7 +6,7 @@ export interface CampusPlace {
   category: PlaceCategory;
   latitude: number;
   longitude: number;
-  shortDescription: string;
+  shortDescription?: string;
   floorOrBuilding?: string;
   tags: string[];
   popularItems?: string[];

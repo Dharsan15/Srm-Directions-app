@@ -98,7 +98,7 @@ export default function Home() {
 
       const q = searchQuery.toLowerCase().trim();
       const matchName = place.name.toLowerCase().includes(q);
-      const matchDesc = place.shortDescription.toLowerCase().includes(q);
+      const matchDesc = place.shortDescription ? place.shortDescription.toLowerCase().includes(q) : false;
       const matchLocation = place.floorOrBuilding?.toLowerCase().includes(q) || false;
       const matchTags = place.tags?.some((t) => t.toLowerCase().includes(q)) || false;
       const matchPopular = place.popularItems?.some((i) => i.toLowerCase().includes(q)) || false;

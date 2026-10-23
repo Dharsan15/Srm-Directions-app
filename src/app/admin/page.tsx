@@ -11,6 +11,7 @@ import {
   deleteCampusPlace 
 } from '@/lib/placesService';
 import { isSupabaseConfigured, getAdminUser, signOutAdmin } from '@/lib/supabase';
+import QRCode from 'qrcode';
 import { 
   Plus, 
   Edit3, 
@@ -26,7 +27,8 @@ import {
   Navigation2, 
   Building2, 
   Compass,
-  QrCode
+  QrCode,
+  Tag
 } from 'lucide-react';
 
 export default function AdminDashboardPage() {
@@ -45,17 +47,22 @@ export default function AdminDashboardPage() {
   const [showQRStudio, setShowQRStudio] = useState(false);
   const [statusModal, setStatusModal] = useState<{ isOpen: boolean; message: string; type?: 'success' | 'error' } | null>(null);
 
+  // Production QR Code URL
+  const QR_TARGET_URL = 'https://srm-directions-app.onrender.com/';
+  const [qrDataUrl, setQrDataUrl] = useState('');
+
   // Form fields
   const [formData, setFormData] = useState({
     name: '',
     category: 'canteen' as PlaceCategory,
     latitude: '12.8235',
     longitude: '80.0450',
-    shortDescription: '',
-    floorOrBuilding: '',
-    tags: '',
-    popularItems: ''
+    floorOrBuilding: ''
   });
+
+  // Dynamic interactive tags state for Add / Edit Landmark
+  const [tagsList, setTagsList] = useState<string[]>([]);
+  const [newTagInput, setNewTagInput] = useState('');
 
   // Action statuses
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -100,6 +107,47 @@ export default function AdminDashboardPage() {
     }
   }, [isAuthenticated]);
 
+  // Generate QR code data URL pointing to production URL
+  useEffect(() => {
+    QRCode.toDataURL(QR_TARGET_URL, {
+      width: 440,
+      margin: 2,
+      color: {
+        dark: '#071e48',
+        light: '#ffffff'
+      }
+    })
+      .then(url => setQrDataUrl(url))
+      .catch(err => console.error('Error generating QR Code:', err));
+  }, []);
+
+  // Aggregate all unique tags from current places + common suggestions
+  const allExistingTags = useMemo(() => {
+    const set = new Set<string>();
+    places.forEach(p => {
+      (p.tags || []).forEach(t => { if (t && t.trim()) set.add(t.trim()); });
+      (p.popularItems || []).forEach(t => { if (t && t.trim()) set.add(t.trim()); });
+    });
+    // Campus presets
+    ['Shawarma', 'Juices', 'North Indian', 'South Indian', 'Coffee & Tea', 'Air Conditioned', 'Free WiFi', 'Hostel Mess', 'ATM & Banking', 'Library & Study', 'Pharmacy', 'Printers & Xerox'].forEach(t => set.add(t));
+    return Array.from(set);
+  }, [places]);
+
+  const handleAddTag = (tagToAdd?: string) => {
+    const tag = (tagToAdd !== undefined ? tagToAdd : newTagInput).trim();
+    if (!tag) return;
+    if (!tagsList.some(t => t.toLowerCase() === tag.toLowerCase())) {
+      setTagsList(prev => [...prev, tag]);
+    }
+    if (tagToAdd === undefined) {
+      setNewTagInput('');
+    }
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    setTagsList(prev => prev.filter(t => t !== tagToRemove));
+  };
+
   const handleLogout = async () => {
     await signOutAdmin();
     if (typeof window !== 'undefined') {
@@ -115,11 +163,10 @@ export default function AdminDashboardPage() {
       category: 'canteen',
       latitude: '12.8235',
       longitude: '80.0450',
-      shortDescription: '',
-      floorOrBuilding: '',
-      tags: '',
-      popularItems: ''
+      floorOrBuilding: ''
     });
+    setTagsList([]);
+    setNewTagInput('');
     setShowAddModal(true);
   };
 
@@ -130,16 +177,18 @@ export default function AdminDashboardPage() {
       category: place.category,
       latitude: place.latitude.toString(),
       longitude: place.longitude.toString(),
-      shortDescription: place.shortDescription,
-      floorOrBuilding: place.floorOrBuilding || '',
-      tags: place.tags ? place.tags.join(', ') : '',
-      popularItems: place.popularItems ? place.popularItems.join(', ') : ''
+      floorOrBuilding: place.floorOrBuilding || ''
     });
+    const combinedTags = Array.from(new Set([...(place.tags || []), ...(place.popularItems || [])]))
+      .map(t => t.trim())
+      .filter(Boolean);
+    setTagsList(combinedTags);
+    setNewTagInput('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.latitude || !formData.longitude || !formData.shortDescription.trim()) {
+    if (!formData.name.trim() || !formData.latitude || !formData.longitude) {
       setStatusModal({
         isOpen: true,
         message: 'Please fill out all required fields.',
@@ -150,8 +199,7 @@ export default function AdminDashboardPage() {
 
     setIsSubmitting(true);
     try {
-      const parsedTags = formData.tags ? formData.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
-      const parsedPopular = formData.popularItems ? formData.popularItems.split(',').map(t => t.trim()).filter(Boolean) : [];
+      const finalTags = tagsList.map(t => t.trim()).filter(Boolean);
 
       if (editingPlace) {
         await updateCampusPlace(editingPlace.id, {
@@ -159,10 +207,9 @@ export default function AdminDashboardPage() {
           category: formData.category,
           latitude: parseFloat(formData.latitude),
           longitude: parseFloat(formData.longitude),
-          shortDescription: formData.shortDescription.trim(),
           floorOrBuilding: formData.floorOrBuilding.trim() || undefined,
-          tags: parsedTags,
-          popularItems: parsedPopular
+          tags: finalTags,
+          popularItems: finalTags
         });
         setEditingPlace(null);
       } else {
@@ -171,10 +218,9 @@ export default function AdminDashboardPage() {
           category: formData.category,
           latitude: parseFloat(formData.latitude),
           longitude: parseFloat(formData.longitude),
-          shortDescription: formData.shortDescription.trim(),
           floorOrBuilding: formData.floorOrBuilding.trim() || undefined,
-          tags: parsedTags,
-          popularItems: parsedPopular
+          tags: finalTags,
+          popularItems: finalTags
         });
         setShowAddModal(false);
       }
@@ -228,7 +274,7 @@ export default function AdminDashboardPage() {
       const q = searchQuery.toLowerCase().trim();
       return (
         p.name.toLowerCase().includes(q) ||
-        p.shortDescription.toLowerCase().includes(q) ||
+        (p.shortDescription ? p.shortDescription.toLowerCase().includes(q) : false) ||
         (p.floorOrBuilding && p.floorOrBuilding.toLowerCase().includes(q))
       );
     });
@@ -516,9 +562,6 @@ export default function AdminDashboardPage() {
                   >
                     <td style={{ padding: '1rem 1.25rem' }}>
                       <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{place.name}</div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px', maxWidth: '320px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {place.shortDescription}
-                      </div>
                     </td>
                     <td style={{ padding: '1rem' }}>
                       <span style={{
@@ -754,48 +797,149 @@ export default function AdminDashboardPage() {
                 />
               </div>
 
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.35rem' }}>
-                  Description *
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  placeholder="Accurate description of departments, services, or dining options..."
-                  value={formData.shortDescription}
-                  onChange={(e) => setFormData({ ...formData, shortDescription: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '0.65rem 0.85rem',
-                    borderRadius: 'var(--radius-xs)',
-                    border: '1px solid var(--border-medium)',
-                    backgroundColor: 'var(--bg-subtle)',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.88rem',
-                    resize: 'none'
-                  }}
-                />
-              </div>
-
+              {/* Interactive Dynamic Tag Manager */}
               <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.35rem' }}>
-                  Tags / Popular Highlights (Comma-separated)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Shawarma, Juices, CSE Labs, Placement Cell"
-                  value={formData.tags}
-                  onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '0.65rem 0.85rem',
-                    borderRadius: 'var(--radius-xs)',
-                    border: '1px solid var(--border-medium)',
-                    backgroundColor: 'var(--bg-subtle)',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.88rem'
-                  }}
-                />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <Tag size={13} style={{ color: 'var(--srm-gold)' }} />
+                    <span>Tags & Highlights</span>
+                  </label>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    Add custom tags or click suggestions
+                  </span>
+                </div>
+
+                {/* Active Tag Chips */}
+                <div style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '0.4rem',
+                  padding: '0.6rem',
+                  borderRadius: 'var(--radius-xs)',
+                  border: '1px solid var(--border-medium)',
+                  backgroundColor: 'var(--bg-subtle)',
+                  minHeight: '44px',
+                  marginBottom: '0.6rem',
+                  alignItems: 'center'
+                }}>
+                  {tagsList.length === 0 ? (
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      No tags added yet. Type a custom tag below or click suggestions.
+                    </span>
+                  ) : (
+                    tagsList.map(tag => (
+                      <span
+                        key={tag}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          padding: '0.25rem 0.65rem',
+                          borderRadius: '100px',
+                          fontSize: '0.76rem',
+                          fontWeight: 600,
+                          backgroundColor: 'var(--card-bg)',
+                          border: '1px solid var(--border-medium)',
+                          color: 'var(--text-primary)',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                        }}
+                      >
+                        <span>{tag}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTag(tag)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: 'var(--text-muted)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: '0.1rem',
+                            borderRadius: '50%'
+                          }}
+                          aria-label={`Remove tag ${tag}`}
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+
+                {/* Input for typing and adding any new tag */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.6rem' }}>
+                  <input
+                    type="text"
+                    placeholder="Type any new tag (e.g. Biryani, 24/7 Study, Xerox)..."
+                    value={newTagInput}
+                    onChange={(e) => setNewTagInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddTag();
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '0.55rem 0.75rem',
+                      borderRadius: 'var(--radius-xs)',
+                      border: '1px solid var(--border-medium)',
+                      backgroundColor: 'var(--bg-subtle)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.84rem'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAddTag()}
+                    className="btn-secondary"
+                    style={{
+                      padding: '0.55rem 0.9rem',
+                      fontSize: '0.82rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <Plus size={14} />
+                    <span>Add Tag</span>
+                  </button>
+                </div>
+
+                {/* Quick suggestions to click and add */}
+                <div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Quick suggestions:
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', maxHeight: '76px', overflowY: 'auto' }}>
+                    {allExistingTags
+                      .filter(t => !tagsList.some(curr => curr.toLowerCase() === t.toLowerCase()))
+                      .slice(0, 16)
+                      .map(t => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => handleAddTag(t)}
+                          style={{
+                            padding: '0.18rem 0.55rem',
+                            borderRadius: '100px',
+                            border: '1px dashed var(--border-medium)',
+                            background: 'transparent',
+                            color: 'var(--text-secondary)',
+                            fontSize: '0.72rem',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.25rem'
+                          }}
+                        >
+                          <span style={{ color: 'var(--srm-gold)', fontWeight: 700 }}>+</span> {t}
+                        </button>
+                      ))}
+                  </div>
+                </div>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
@@ -867,30 +1011,36 @@ export default function AdminDashboardPage() {
                 marginBottom: '1rem'
               }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/srm-campus-qr.png"
-                  alt="SRM Universal Campus QR"
-                  style={{ width: '220px', height: '220px', display: 'block' }}
-                />
+                {qrDataUrl ? (
+                  <img
+                    src={qrDataUrl}
+                    alt="SRM Universal Campus QR"
+                    style={{ width: '220px', height: '220px', display: 'block' }}
+                  />
+                ) : (
+                  <div style={{ width: '220px', height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Generating QR...</span>
+                  </div>
+                )}
               </div>
 
               <div style={{ fontSize: '0.98rem', fontWeight: 700, marginBottom: '0.25rem' }}>
                 SCAN FOR WALKING DIRECTIONS
               </div>
-              <div style={{ fontSize: '0.78rem', color: '#64748b', maxWidth: '280px', margin: '0 auto' }}>
-                Post at Main Gates, Tech Park, Canteens, and Student Hostels.
+              <div style={{ fontSize: '0.75rem', color: '#64748b', maxWidth: '320px', margin: '0 auto', wordBreak: 'break-all' }}>
+                {QR_TARGET_URL}
               </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'center' }}>
               <a
-                href="/srm-campus-qr.png"
+                href={qrDataUrl || '#'}
                 download="srm-campus-qr.png"
                 className="btn-primary-gold"
                 style={{ textDecoration: 'none', fontSize: '0.86rem' }}
               >
                 <Download size={15} />
-                <span>Download Poster</span>
+                <span>Download QR Code</span>
               </a>
             </div>
           </div>
