@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { CampusPlace, CATEGORY_INFO, getGoogleMapsWalkingUrl } from '@/data/campusPlaces';
+import { CampusPlace, CATEGORY_INFO, getCategoryMeta, getGoogleMapsWalkingUrl } from '@/data/campusPlaces';
 import { 
   Navigation2, 
   MapPin, 
@@ -22,7 +22,7 @@ interface PlaceCardProps {
 
 export const PlaceCard: React.FC<PlaceCardProps> = ({ place }) => {
   const [copied, setCopied] = useState(false);
-  const categoryMeta = CATEGORY_INFO[place.category];
+  const categoryMeta = getCategoryMeta(place.category);
 
   const handleCardClick = () => {
     const url = getGoogleMapsWalkingUrl(place.latitude, place.longitude, place.name);
@@ -77,9 +77,9 @@ export const PlaceCard: React.FC<PlaceCardProps> = ({ place }) => {
             borderRadius: 'var(--radius-xs)',
             fontSize: '0.72rem',
             fontWeight: 600,
-            background: `var(--cat-${place.category}-bg)`,
-            color: `var(--cat-${place.category})`,
-            border: `1px solid var(--cat-${place.category}-border)`
+            background: `var(--cat-${place.category}-bg, rgba(14, 165, 233, 0.12))`,
+            color: `var(--cat-${place.category}, ${categoryMeta.color})`,
+            border: `1px solid var(--cat-${place.category}-border, rgba(14, 165, 233, 0.25))`
           }}>
             {getCategoryIcon()}
             <span>{categoryMeta.label}</span>

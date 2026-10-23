@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { CampusPlace, PlaceCategory, CATEGORY_INFO } from '@/data/campusPlaces';
-import { fetchCampusPlaces } from '@/lib/placesService';
+import { CampusPlace, PlaceCategory, CATEGORY_INFO, getCategoryMeta } from '@/data/campusPlaces';
+import { fetchCampusPlaces, fetchCampusCategories } from '@/lib/placesService';
 import { Header } from '@/components/Header';
 import { WelcomeModal } from '@/components/WelcomeModal';
 import { CategoryFilter } from '@/components/CategoryFilter';
@@ -18,6 +18,7 @@ import {
 
 export default function Home() {
   const [places, setPlaces] = useState<CampusPlace[]>([]);
+  const [dbCategories, setDbCategories] = useState<Array<{ id: string; label: string }>>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Search & Filters
@@ -59,8 +60,14 @@ export default function Home() {
   const loadPlaces = async () => {
     setIsLoading(true);
     try {
-      const res = await fetchCampusPlaces();
-      setPlaces(res.places);
+      const [placesRes, categoriesRes] = await Promise.all([
+        fetchCampusPlaces(),
+        fetchCampusCategories()
+      ]);
+      setPlaces(placesRes.places);
+      if (categoriesRes && categoriesRes.length > 0) {
+        setDbCategories(categoriesRes);
+      }
     } catch (err) {
       console.error('Failed to load places:', err);
     } finally {
@@ -73,7 +80,7 @@ export default function Home() {
   }, []);
 
   const categoryCounts = useMemo(() => {
-    const counts: Record<PlaceCategory | 'all', number> = {
+    const counts: Record<string, number> = {
       all: places.length,
       canteen: 0,
       academic: 0,
@@ -82,9 +89,7 @@ export default function Home() {
       amenity: 0
     };
     places.forEach((p) => {
-      if (counts[p.category] !== undefined) {
-        counts[p.category] += 1;
-      }
+      counts[p.category] = (counts[p.category] || 0) + 1;
     });
     return counts;
   }, [places]);
@@ -247,7 +252,7 @@ export default function Home() {
             <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               {selectedCategory === 'all' 
                 ? 'All Campus Locations' 
-                : CATEGORY_INFO[selectedCategory].label}
+                : getCategoryMeta(selectedCategory).label}
             </h2>
             <span style={{
               fontSize: '0.78rem',

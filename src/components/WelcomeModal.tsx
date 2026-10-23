@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { PlaceCategory, CATEGORY_INFO } from '@/data/campusPlaces';
+import { PlaceCategory, CATEGORY_INFO, getCategoryMeta } from '@/data/campusPlaces';
 import { 
   X, 
   Search, 
@@ -208,7 +208,7 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({
             gap: '0.65rem'
           }}>
             {(['canteen', 'academic', 'hostel', 'gate', 'amenity'] as PlaceCategory[]).map((cat) => {
-              const info = CATEGORY_INFO[cat];
+              const info = getCategoryMeta(cat);
               return (
                 <button
                   key={cat}

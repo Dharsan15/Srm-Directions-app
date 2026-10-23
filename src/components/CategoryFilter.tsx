@@ -1,20 +1,21 @@
 'use client';
 
-import React from 'react';
-import { PlaceCategory } from '@/data/campusPlaces';
+import React, { useMemo } from 'react';
+import { PlaceCategory, getCategoryMeta } from '@/data/campusPlaces';
 import { 
   Compass, 
   Utensils, 
   GraduationCap, 
   Building, 
   DoorOpen, 
-  HeartPulse 
+  HeartPulse,
+  MapPin
 } from 'lucide-react';
 
 interface CategoryFilterProps {
   selectedCategory: PlaceCategory | 'all';
   onSelectCategory: (category: PlaceCategory | 'all') => void;
-  counts: Record<PlaceCategory | 'all', number>;
+  counts: Record<string, number>;
 }
 
 export const CategoryFilter: React.FC<CategoryFilterProps> = ({
@@ -22,38 +23,32 @@ export const CategoryFilter: React.FC<CategoryFilterProps> = ({
   onSelectCategory,
   counts
 }) => {
-  const categories: Array<{ id: PlaceCategory | 'all'; label: string; icon: React.ReactNode }> = [
-    {
-      id: 'all',
-      label: 'All Landmarks',
-      icon: <Compass size={15} />
-    },
-    {
-      id: 'canteen',
-      label: 'Food & Canteens',
-      icon: <Utensils size={15} />
-    },
-    {
-      id: 'academic',
-      label: 'Academic Blocks',
-      icon: <GraduationCap size={15} />
-    },
-    {
-      id: 'hostel',
-      label: 'Student Hostels',
-      icon: <Building size={15} />
-    },
-    {
-      id: 'gate',
-      label: 'Campus Gates',
-      icon: <DoorOpen size={15} />
-    },
-    {
-      id: 'amenity',
-      label: 'Healthcare & Services',
-      icon: <HeartPulse size={15} />
-    }
-  ];
+  const categories = useMemo(() => {
+    const base: Array<{ id: string; label: string; icon: React.ReactNode }> = [
+      { id: 'all', label: 'All Landmarks', icon: <Compass size={15} /> },
+      { id: 'canteen', label: 'Food & Canteens', icon: <Utensils size={15} /> },
+      { id: 'academic', label: 'Academic Blocks', icon: <GraduationCap size={15} /> },
+      { id: 'hostel', label: 'Student Hostels', icon: <Building size={15} /> },
+      { id: 'gate', label: 'Campus Gates', icon: <DoorOpen size={15} /> },
+      { id: 'amenity', label: 'Healthcare & Services', icon: <HeartPulse size={15} /> }
+    ];
+
+    const knownIds = new Set(base.map(c => c.id));
+    const extra: Array<{ id: string; label: string; icon: React.ReactNode }> = [];
+
+    Object.keys(counts).forEach(key => {
+      if (!knownIds.has(key) && counts[key] > 0) {
+        const meta = getCategoryMeta(key);
+        extra.push({
+          id: key,
+          label: meta.label,
+          icon: <MapPin size={15} />
+        });
+      }
+    });
+
+    return [...base, ...extra];
+  }, [counts]);
 
   return (
     <div style={{

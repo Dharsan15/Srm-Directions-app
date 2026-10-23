@@ -3,12 +3,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CampusPlace, PlaceCategory, CATEGORY_INFO, getGoogleMapsWalkingUrl } from '@/data/campusPlaces';
+import { CampusPlace, PlaceCategory, CATEGORY_INFO, getCategoryMeta, getGoogleMapsWalkingUrl } from '@/data/campusPlaces';
 import { 
   fetchCampusPlaces, 
   addCampusPlace, 
   updateCampusPlace, 
-  deleteCampusPlace 
+  deleteCampusPlace,
+  fetchCampusCategories,
+  addCampusCategory
 } from '@/lib/placesService';
 import { isSupabaseConfigured, getAdminUser, signOutAdmin } from '@/lib/supabase';
 import QRCode from 'qrcode';
@@ -28,8 +30,17 @@ import {
   Building2, 
   Compass,
   QrCode,
-  Tag
+  Tag,
+  FolderPlus
 } from 'lucide-react';
+
+const BASE_CATEGORIES: Array<{ id: string; label: string }> = [
+  { id: 'canteen', label: 'Food & Canteens' },
+  { id: 'academic', label: 'Academic Blocks' },
+  { id: 'hostel', label: 'Student Hostels' },
+  { id: 'gate', label: 'Gates & Transit' },
+  { id: 'amenity', label: 'Healthcare & Amenities' }
+];
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -39,13 +50,20 @@ export default function AdminDashboardPage() {
   const [places, setPlaces] = useState<CampusPlace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<PlaceCategory | 'all'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
   // Modals & form state
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingPlace, setEditingPlace] = useState<CampusPlace | null>(null);
   const [showQRStudio, setShowQRStudio] = useState(false);
   const [statusModal, setStatusModal] = useState<{ isOpen: boolean; message: string; type?: 'success' | 'error' } | null>(null);
+
+  // Dynamic Categories state
+  const [customCategories, setCustomCategories] = useState<Array<{ id: string; label: string }>>([]);
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+  const [newCategoryModalName, setNewCategoryModalName] = useState('');
+  const [isAddingInlineCategory, setIsAddingInlineCategory] = useState(false);
+  const [inlineCategoryInput, setInlineCategoryInput] = useState('');
 
   // Production QR Code URL
   const QR_TARGET_URL = 'https://srm-directions-app.onrender.com/';
@@ -92,8 +110,14 @@ export default function AdminDashboardPage() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const res = await fetchCampusPlaces();
-      setPlaces(res.places);
+      const [placesRes, categoriesRes] = await Promise.all([
+        fetchCampusPlaces(),
+        fetchCampusCategories()
+      ]);
+      setPlaces(placesRes.places);
+      if (categoriesRes && categoriesRes.length > 0) {
+        setCustomCategories(categoriesRes);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -106,6 +130,56 @@ export default function AdminDashboardPage() {
       loadData();
     }
   }, [isAuthenticated]);
+
+  // Load custom categories from localStorage as initial cache
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('srm_custom_categories_v1');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCustomCategories(prev => prev.length === 0 ? parsed : prev);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Aggregated available categories (standard base + custom added + any from database places)
+  const availableCategories = useMemo(() => {
+    const map = new Map<string, string>();
+    BASE_CATEGORIES.forEach(c => map.set(c.id, c.label));
+    customCategories.forEach(c => map.set(c.id, c.label));
+    places.forEach(p => {
+      if (p.category && !map.has(p.category)) {
+        map.set(p.category, getCategoryMeta(p.category).label);
+      }
+    });
+    return Array.from(map.entries()).map(([id, label]) => ({ id, label }));
+  }, [customCategories, places]);
+
+  const handleAddCategory = (rawName: string): string | null => {
+    const trimmed = rawName.trim();
+    if (!trimmed) return null;
+    const id = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `cat-${Date.now()}`;
+    const newCat = { id, label: trimmed };
+    const exists = availableCategories.some(c => c.id === id);
+    if (!exists) {
+      const updated = [...customCategories, newCat];
+      setCustomCategories(updated);
+      try {
+        localStorage.setItem('srm_custom_categories_v1', JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      // Save directly to Supabase campus_categories table!
+      addCampusCategory(newCat).catch(err => {
+        console.warn('Saved locally; Supabase category write note:', err);
+      });
+    }
+    return id;
+  };
 
   // Generate QR code data URL pointing to production URL
   useEffect(() => {
@@ -160,13 +234,15 @@ export default function AdminDashboardPage() {
   const handleOpenAdd = () => {
     setFormData({
       name: '',
-      category: 'canteen',
+      category: availableCategories[0]?.id || 'canteen',
       latitude: '12.8235',
       longitude: '80.0450',
       floorOrBuilding: ''
     });
     setTagsList([]);
     setNewTagInput('');
+    setIsAddingInlineCategory(false);
+    setInlineCategoryInput('');
     setShowAddModal(true);
   };
 
@@ -184,6 +260,8 @@ export default function AdminDashboardPage() {
       .filter(Boolean);
     setTagsList(combinedTags);
     setNewTagInput('');
+    setIsAddingInlineCategory(false);
+    setInlineCategoryInput('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -498,7 +576,7 @@ export default function AdminDashboardPage() {
             {/* Category Select */}
             <select
               value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value as PlaceCategory | 'all')}
+              onChange={(e) => setCategoryFilter(e.target.value)}
               style={{
                 padding: '0.65rem 0.85rem',
                 borderRadius: 'var(--radius-xs)',
@@ -510,23 +588,34 @@ export default function AdminDashboardPage() {
               }}
             >
               <option value="all">All Categories</option>
-              <option value="canteen">Food & Canteens</option>
-              <option value="academic">Academic Blocks</option>
-              <option value="hostel">Hostels</option>
-              <option value="gate">Gates & Transit</option>
-              <option value="amenity">Healthcare & Amenities</option>
+              {availableCategories.map(cat => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.label}
+                </option>
+              ))}
             </select>
           </div>
 
-          {/* Add Button */}
-          <button
-            onClick={handleOpenAdd}
-            className="btn-primary-navy"
-            style={{ padding: '0.65rem 1.1rem', fontSize: '0.86rem' }}
-          >
-            <Plus size={16} />
-            <span>Add New Campus Landmark</span>
-          </button>
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center' }}>
+            <button
+              onClick={() => setShowAddCategoryModal(true)}
+              className="btn-secondary"
+              style={{ padding: '0.65rem 0.95rem', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            >
+              <FolderPlus size={15} style={{ color: 'var(--srm-gold)' }} />
+              <span>+ Add Category</span>
+            </button>
+
+            <button
+              onClick={handleOpenAdd}
+              className="btn-primary-navy"
+              style={{ padding: '0.65rem 1.1rem', fontSize: '0.86rem' }}
+            >
+              <Plus size={16} />
+              <span>Add New Campus Landmark</span>
+            </button>
+          </div>
         </div>
 
         {/* Data Table */}
@@ -550,33 +639,35 @@ export default function AdminDashboardPage() {
             </thead>
             <tbody>
               {filteredPlaces.length > 0 ? (
-                filteredPlaces.map((place) => (
-                  <tr
-                    key={place.id}
-                    style={{
-                      borderBottom: '1px solid var(--border-subtle)',
-                      transition: 'background-color 0.15s'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-subtle)'}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <td style={{ padding: '1rem 1.25rem' }}>
-                      <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{place.name}</div>
-                    </td>
-                    <td style={{ padding: '1rem' }}>
-                      <span style={{
-                        display: 'inline-flex',
-                        padding: '0.15rem 0.5rem',
-                        borderRadius: 'var(--radius-xs)',
-                        fontSize: '0.74rem',
-                        fontWeight: 600,
-                        backgroundColor: `var(--cat-${place.category}-bg)`,
-                        color: `var(--cat-${place.category})`,
-                        border: `1px solid var(--cat-${place.category}-border)`
-                      }}>
-                        {CATEGORY_INFO[place.category].label}
-                      </span>
-                    </td>
+                filteredPlaces.map((place) => {
+                  const catMeta = getCategoryMeta(place.category);
+                  return (
+                    <tr
+                      key={place.id}
+                      style={{
+                        borderBottom: '1px solid var(--border-subtle)',
+                        transition: 'background-color 0.15s'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-subtle)'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                    >
+                      <td style={{ padding: '1rem 1.25rem' }}>
+                        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{place.name}</div>
+                      </td>
+                      <td style={{ padding: '1rem' }}>
+                        <span style={{
+                          display: 'inline-flex',
+                          padding: '0.15rem 0.55rem',
+                          borderRadius: 'var(--radius-xs)',
+                          fontSize: '0.74rem',
+                          fontWeight: 600,
+                          backgroundColor: `var(--cat-${place.category}-bg, rgba(14, 165, 233, 0.12))`,
+                          color: `var(--cat-${place.category}, ${catMeta.color})`,
+                          border: `1px solid var(--cat-${place.category}-border, rgba(14, 165, 233, 0.25))`
+                        }}>
+                          {catMeta.label}
+                        </span>
+                      </td>
                     <td style={{ padding: '1rem', color: 'var(--text-secondary)' }}>
                       {place.floorOrBuilding || '—'}
                     </td>
@@ -635,8 +726,9 @@ export default function AdminDashboardPage() {
                       </div>
                     </td>
                   </tr>
-                ))
-              ) : (
+                );
+              })
+            ) : (
                 <tr>
                   <td colSpan={6} style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
                     No landmarks matching the query.
@@ -705,28 +797,120 @@ export default function AdminDashboardPage() {
                 </div>
 
                 <div>
-                  <label style={{ fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.35rem' }}>
-                    Category *
-                  </label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value as PlaceCategory })}
-                    style={{
-                      width: '100%',
-                      padding: '0.65rem 0.85rem',
-                      borderRadius: 'var(--radius-xs)',
-                      border: '1px solid var(--border-medium)',
-                      backgroundColor: 'var(--bg-subtle)',
-                      color: 'var(--text-primary)',
-                      fontSize: '0.88rem'
-                    }}
-                  >
-                    <option value="canteen">Food & Canteen</option>
-                    <option value="academic">Academic Block</option>
-                    <option value="hostel">Hostel</option>
-                    <option value="gate">Gate & Transit</option>
-                    <option value="amenity">Healthcare & Amenity</option>
-                  </select>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                      Category *
+                    </label>
+                    {!isAddingInlineCategory && (
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingInlineCategory(true)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--srm-gold)',
+                          fontSize: '0.74rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.2rem',
+                          padding: 0
+                        }}
+                      >
+                        <Plus size={12} />
+                        <span>+ New Category</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {isAddingInlineCategory ? (
+                    <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                      <input
+                        type="text"
+                        placeholder="e.g. Sports Complex, Library..."
+                        value={inlineCategoryInput}
+                        onChange={(e) => setInlineCategoryInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (inlineCategoryInput.trim()) {
+                              const newId = handleAddCategory(inlineCategoryInput.trim());
+                              if (newId) {
+                                setFormData({ ...formData, category: newId });
+                              }
+                              setIsAddingInlineCategory(false);
+                              setInlineCategoryInput('');
+                            }
+                          }
+                        }}
+                        autoFocus
+                        style={{
+                          flex: 1,
+                          padding: '0.6rem 0.65rem',
+                          borderRadius: 'var(--radius-xs)',
+                          border: '1px solid var(--srm-gold)',
+                          backgroundColor: 'var(--bg-subtle)',
+                          color: 'var(--text-primary)',
+                          fontSize: '0.84rem'
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (inlineCategoryInput.trim()) {
+                            const newId = handleAddCategory(inlineCategoryInput.trim());
+                            if (newId) {
+                              setFormData({ ...formData, category: newId });
+                            }
+                            setIsAddingInlineCategory(false);
+                            setInlineCategoryInput('');
+                          }
+                        }}
+                        className="btn-primary-navy"
+                        style={{ padding: '0.55rem 0.75rem', fontSize: '0.78rem', whiteSpace: 'nowrap' }}
+                      >
+                        Add
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setIsAddingInlineCategory(false); setInlineCategoryInput(''); }}
+                        className="btn-secondary"
+                        style={{ padding: '0.55rem 0.6rem', fontSize: '0.78rem' }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <select
+                      value={formData.category}
+                      onChange={(e) => {
+                        if (e.target.value === '__add_new__') {
+                          setIsAddingInlineCategory(true);
+                        } else {
+                          setFormData({ ...formData, category: e.target.value });
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '0.65rem 0.85rem',
+                        borderRadius: 'var(--radius-xs)',
+                        border: '1px solid var(--border-medium)',
+                        backgroundColor: 'var(--bg-subtle)',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.88rem'
+                      }}
+                    >
+                      {availableCategories.map(cat => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.label}
+                        </option>
+                      ))}
+                      <option value="__add_new__" style={{ fontWeight: 700, color: 'var(--srm-gold)' }}>
+                        ➕ + Add New Category...
+                      </option>
+                    </select>
+                  )}
                 </div>
               </div>
 
@@ -1099,6 +1283,124 @@ export default function AdminDashboardPage() {
             >
               OK
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Standalone Add Category Modal */}
+      {showAddCategoryModal && (
+        <div className="modal-overlay" onClick={() => setShowAddCategoryModal(false)}>
+          <div 
+            className="modal-content" 
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '440px', padding: '1.75rem' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <FolderPlus size={18} style={{ color: 'var(--srm-gold)' }} />
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Add New Category
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowAddCategoryModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.35rem' }}>
+                Category Name *
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Sports Complex, Laboratories, Auditorium..."
+                value={newCategoryModalName}
+                onChange={(e) => setNewCategoryModalName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (newCategoryModalName.trim()) {
+                      handleAddCategory(newCategoryModalName.trim());
+                      setNewCategoryModalName('');
+                      setShowAddCategoryModal(false);
+                      setStatusModal({
+                        isOpen: true,
+                        message: 'Category added successfully!',
+                        type: 'success'
+                      });
+                    }
+                  }
+                }}
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  borderRadius: 'var(--radius-xs)',
+                  border: '1px solid var(--border-medium)',
+                  backgroundColor: 'var(--bg-subtle)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.88rem'
+                }}
+              />
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+                This category will be immediately available in landmark creation, table filters, and visitor navigation.
+              </div>
+            </div>
+
+            {/* Existing Categories Preview */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>
+                Active Categories ({availableCategories.length})
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', maxHeight: '110px', overflowY: 'auto' }}>
+                {availableCategories.map(cat => (
+                  <span
+                    key={cat.id}
+                    style={{
+                      fontSize: '0.72rem',
+                      padding: '0.2rem 0.55rem',
+                      borderRadius: '100px',
+                      backgroundColor: 'var(--bg-subtle)',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-secondary)'
+                    }}
+                  >
+                    {cat.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem' }}>
+              <button
+                type="button"
+                onClick={() => { setShowAddCategoryModal(false); setNewCategoryModalName(''); }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (newCategoryModalName.trim()) {
+                    handleAddCategory(newCategoryModalName.trim());
+                    setNewCategoryModalName('');
+                    setShowAddCategoryModal(false);
+                    setStatusModal({
+                      isOpen: true,
+                      message: 'Category added successfully!',
+                      type: 'success'
+                    });
+                  }
+                }}
+                className="btn-primary-navy"
+              >
+                Create Category
+              </button>
+            </div>
           </div>
         </div>
       )}

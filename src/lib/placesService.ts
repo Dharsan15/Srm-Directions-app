@@ -7,7 +7,7 @@ const LOCAL_STORAGE_KEY = 'srm_campus_places_cache_v1';
 interface SupabasePlaceRow {
   id: string;
   name: string;
-  category: 'academic' | 'canteen' | 'hostel' | 'gate' | 'amenity';
+  category: string;
   latitude: number;
   longitude: number;
   short_description: string;
@@ -158,4 +158,42 @@ export async function deleteCampusPlace(id: string): Promise<boolean> {
   }
 
   return true;
+}
+
+/**
+ * Fetch custom categories from Supabase database
+ */
+export async function fetchCampusCategories(): Promise<Array<{ id: string; label: string }>> {
+  if (typeof window !== 'undefined') {
+    try {
+      const response = await fetch('/api/categories', { cache: 'no-store' });
+      if (response.ok) {
+        const json = await response.json();
+        if (json.success && Array.isArray(json.categories)) {
+          return json.categories;
+        }
+      }
+    } catch (err) {
+      console.warn('API /api/categories fetch note:', err);
+    }
+  }
+  return [];
+}
+
+/**
+ * Add a new category to Supabase database
+ */
+export async function addCampusCategory(category: { id: string; label: string }): Promise<{ id: string; label: string }> {
+  const response = await fetch('/api/categories', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(category)
+  });
+
+  const resJson = await response.json().catch(() => ({}));
+  if (!response.ok || !resJson.success) {
+    throw new Error(resJson.error || `Failed to add category (Status ${response.status})`);
+  }
+
+  return resJson.category;
 }

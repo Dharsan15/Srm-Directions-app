@@ -16,7 +16,7 @@ function getServerSupabase() {
 interface SupabasePlaceRow {
   id: string;
   name: string;
-  category: 'academic' | 'canteen' | 'hostel' | 'gate' | 'amenity';
+  category: string;
   latitude: number;
   longitude: number;
   short_description: string;
